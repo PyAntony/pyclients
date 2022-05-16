@@ -1,2 +1,2 @@
 # pyclients
-Query clients through ssh
+Query clients through ssh.
