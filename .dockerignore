@@ -1,0 +1,9 @@
+.bsp/
+.git/
+.metals/
+.idea/
+project/
+target/
+__pycache__/
+.ipynb_checkpoints
+*.ipynb
