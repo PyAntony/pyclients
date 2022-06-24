@@ -1,21 +1,28 @@
+"""
+Utility functions.
+"""
+import operator
 import re
 import threading
 import functools
 import traceback
+import isodate
+from datetime import datetime
 from toolz import excepts, first, identity, apply, last
 
 from loguru import logger
 from typing import Callable, Any
 
-from clients.interface.types import Number
+from pyclients.abc.types import Number
+
+
+def set_attr(obj, name, value):
+    setattr(obj, name, value)
+    return obj
 
 
 def or_else(val, condition, alt=None):
     return val if condition else alt
-
-
-def to_int(string: str):
-    return int(string)
 
 
 def head_(sequence):
@@ -37,7 +44,33 @@ def regx_plus(string: str, regx: str, gp: int = 0, converter: Callable = identit
 
 def timestamp13(ts: Number) -> int:
     """Converts a 10 digit (with/without decimals) timestamp to 13 digits."""
-    return int(str(float(ts) * 1000)[:13])
+    num = int(str(float(ts) * 1000)[:13])
+
+    if len(str(num)) == 13:
+        return num
+    else:
+        raise Exception(f"Unable to produce 13 digit number from {ts}")
+
+
+def fmt_exception(e: Exception):
+    return f"{type(e).__name__}{e.args}"
+
+
+def now_with_delta(chars: str, func=operator.sub):
+    if not re.match(r'\d+[dhms]', chars, re.I):
+        raise Exception(f"Delta expression '{chars}' doesn't match pattern: '\d+[dhms]'")
+
+    chars_ = chars.upper()
+    delta_exp = re.sub(r'\d+' + last(chars_), chars_, 'P0DT0H0M0S')
+    delta = isodate.parse_duration(delta_exp)
+
+    return func(datetime.now(), delta).timestamp()
+
+
+def do_when(cond: bool, val: Any, func: Callable) -> Any:
+    """Call func on val if condition is true (only the side effects of 'func' are relevant)."""
+    cond and func(val)
+    return val
 
 
 def secure(*exceptions, alt_value=None, silent=False):
@@ -62,13 +95,7 @@ def secure(*exceptions, alt_value=None, silent=False):
     return decorator
 
 
-def do_conditional(cond: bool, val: Any, func: Callable) -> Any:
-    """Call func on val if condition is true (only the side effects of 'func' are relevant)."""
-    cond and func(val)
-    return val
-
-
-def inspect_func(arguments=True, return_val=True):
+def inspect_call(arguments=True, return_val=True, self=False):
     """
     Decorator logs exception traceback (if any), arguments, and return value.
     """
@@ -76,12 +103,12 @@ def inspect_func(arguments=True, return_val=True):
     def decorator(func):
         @functools.wraps(func)
         def inner(*args, **kwargs):
-            logger.debug(f'Inspecting function: *{func.__name__}* ...')
-            do_conditional(arguments, f'Args: {args}. Kwargs: {kwargs}.', logger.debug)
+            args_ = args[1:] if not self else args
+            do_when(arguments, f'Callable({func.__name__}). Args: {args_}. Kwargs: {kwargs}.', logger.debug)
 
             try:
                 return_ = func(*args, **kwargs)
-                do_conditional(return_val, f'Returning: *{return_}*', logger.debug)
+                do_when(return_val, f'Callable({func.__name__}) returns: {return_}', logger.debug)
 
                 return return_
 

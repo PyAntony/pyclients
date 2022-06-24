@@ -1,7 +1,7 @@
 import abc
 
 
-class Client(abc.ABC):
+class PyClient(abc.ABC):
     @abc.abstractmethod
     def connect(self) -> None:
         pass
@@ -11,5 +11,5 @@ class Client(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def close(self) -> None:
+    def close_connection(self) -> None:
         pass

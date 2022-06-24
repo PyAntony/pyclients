@@ -7,3 +7,4 @@ target/
 __pycache__/
 .ipynb_checkpoints
 *.ipynb
+dist

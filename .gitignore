@@ -3,3 +3,5 @@ __pycache__/
 .ipynb*/
 .mypy_*/
 **/*.ipynb
+.pytest_cache
+dist/

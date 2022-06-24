@@ -7,8 +7,8 @@ from functools import partial
 from json import JSONDecodeError
 from loguru import logger
 
-from clients.kafka.commands import KEY_SEP, HEADERS_SEP
-from clients.utils import head_, tail, regx_plus, secure, to_int
+from pyclients.kafka.commands import KEY_SEP, HEADERS_SEP
+from pyclients.utils import head_, tail, regx_plus, secure
 
 
 @define
@@ -25,8 +25,8 @@ class TopicPartitionOffset:
 
         return cls(
             head_(triple),
-            to_int(second(triple)),
-            to_int(head_(drop(2, triple)))
+            int(second(triple)),
+            int(head_(drop(2, triple)))
         )
 
     @classmethod
@@ -48,31 +48,20 @@ class ConsumerRecord:
     headers: list[tuple[str]]
 
     @classmethod
-    @secure(silent=True)
+    @secure(silent=False)
     def from_string(cls: type, raw: str):
-        regx_convert = partial(regx_plus, raw)
-        not_key_sep = f"[^{KEY_SEP}]*"
-        headers_reg1 = f'{KEY_SEP}({not_key_sep}{HEADERS_SEP}{not_key_sep}){KEY_SEP}'
-        headers_reg2 = f'.*{KEY_SEP}({not_key_sep}){KEY_SEP}{not_key_sep}{KEY_SEP}{not_key_sep}$'
-        key_value_reg = f"({not_key_sep}{KEY_SEP}{not_key_sep}$)"
+        headers, key, payload = raw.split(KEY_SEP)[-3:]
+        fmt_key = lambda s: s if s.lower() not in ['null'] else None
+        fmt_payload = lambda s: excepts(JSONDecodeError, lambda st: json.loads(st), lambda e: s)(s)
+        fmt_headers = lambda s: [tuple(pair.split(':')) for pair in s.split(HEADERS_SEP) if ':' in pair]
 
-        headers: str = regx_convert(headers_reg1, 1) or regx_convert(headers_reg2, 1) or ''
-        split_headers = lambda s: [tuple(pair.split(':')) for pair in s.split(HEADERS_SEP) if ':' in pair]
-
-        key_value: str = regx_convert(key_value_reg, 1)
-        get_key = lambda s: head_(s.split(KEY_SEP))
-        format_key = lambda s: s if s.lower() not in ['null'] else None
-        get_payload = lambda s: head_(tail(s.split(KEY_SEP)))
-        format_payload = lambda s: excepts(JSONDecodeError, lambda st: json.loads(st), lambda e: s)(s)
-
-        logger.trace(f"KafkaRecord from str - Headers: {headers}, KeyValue: {key_value}")
         return cls(
-            regx_convert(r'CreateTime:(\d+)', 1, to_int),
-            regx_convert(r'Partition:(\d+)', 1, to_int),
-            regx_convert(r'Offset:(\d+)', 1, to_int),
-            apply(compose(format_key, get_key), key_value),
-            apply(compose(format_payload, get_payload), key_value),
-            apply(split_headers, headers)
+            regx_plus(raw, r'CreateTime:(\d+)', 1, int),
+            regx_plus(raw, r'Partition:(\d+)', 1, int),
+            regx_plus(raw, r'Offset:(\d+)', 1, int),
+            fmt_key(key),
+            fmt_payload(payload),
+            fmt_headers(headers)
         )
 
     @classmethod
@@ -82,13 +71,6 @@ class ConsumerRecord:
             for token in raw.strip().split('\n')
             if KEY_SEP in token
         ]
-
-    def map_payload(self, mapper: Callable):
-        try:
-            return evolve(self, value=mapper(self.value))
-        except Exception as e:
-            logger.warning(f'mapper failed for value: {self.value} - {e.__class__} {e}')
-            return self
 
 
 @define
@@ -109,11 +91,14 @@ class PartitionReplicaConfig:
     replica_factor: int
     config: str
 
+    def comb(self) -> str:
+        return f"partitions={self.partition},replication={self.replica_factor},{self.config}"
+
     @classmethod
     @secure()
     def from_string(cls: type, raw: str):
         return cls(
-            regx_plus(raw, r'PartitionCount:\s?(\d+)', 1, to_int),
-            regx_plus(raw, r'ReplicationFactor:\s?(\d+)', 1, to_int),
+            regx_plus(raw, r'PartitionCount:\s?(\d+)', 1, int),
+            regx_plus(raw, r'ReplicationFactor:\s?(\d+)', 1, int),
             regx_plus(raw, r'Configs:\s?(.*?)\n', 1),
         )
