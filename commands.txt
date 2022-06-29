@@ -8,3 +8,11 @@ poetry config repositories
 # publish
 poetry build
 poetry publish -r <reponame>
+
+--- GIT
+# forced push
+git push origin main --force
+
+# git merge automatically with other branch (no conflicts)
+# might need to git pull first
+git merge -X theirs develop (from main)

@@ -66,6 +66,7 @@ class KafkaSSH(PyClient, ConnectionBridge):
             filter_in: RecordPredicate = None,
             payload_mapper: PayloadMapper = None,
             # for optimization purposes
+            cmd_max_chars: int = 4000,
             stop_consumer_on: StringPredicate = None,
             sub_command: str = ''
     ) -> list[Any]:
@@ -80,9 +81,10 @@ class KafkaSSH(PyClient, ConnectionBridge):
         :param idle_time_ms: max time consumer will wait for messages to be read.
         :param filter_in: predicate to filter records.
         :param payload_mapper: converter applied to all records.
-        :param stop_consumer_on: (for optimization only, not needed). Consumer will be abruptly terminated if
+        :param cmd_max_chars: (for optimization only) max number of characters allowed per command.
+        :param stop_consumer_on: (for optimization only). Consumer will be abruptly terminated if
             this predicate returns true for the current monitored stdout. Seen records will be returned.
-        :param sub_command: (for optimization only, not needed). Additional command to be appended to the main
+        :param sub_command: (for optimization only). Additional command to be appended to the main
             kafka consumer terminal command. It can help by reducing and/or eliminating unnecessary data return
             by the server process, e.g., adding 'sed' commands to filter out messages.
 
@@ -119,11 +121,10 @@ class KafkaSSH(PyClient, ConnectionBridge):
         from_pair = lambda p: {'partition': p[0].partition, 'from_offset': p[0].offset, 'max_messages': p[1]}
         consumer_cmds = [CMDKafkaConsumer(**csm_args, **from_pair(pair)).get() for pair in offsets_info]
 
-        records = []
-        if consumer_cmds:
-            stdout_lines = self.run_async2(consumer_cmds, force_termination=stop_consumer_on, suffix=sub_command)
-            records = [ConsumerRecord.from_string(rec) for rec in stdout_lines]
-            logger.debug(f"stdoutLinesLen: '{len(stdout_lines)}', recordsParsed '{len(records)}'")
+        runner_args = {'force_termination': stop_consumer_on, 'suffix': sub_command, 'max_chars': cmd_max_chars}
+        stdout_lines = [] if not consumer_cmds else self.run_async2(consumer_cmds, **runner_args)
+        records = [ConsumerRecord.from_string(rec) for rec in stdout_lines]
+        logger.debug(f"stdoutLinesLen: '{len(stdout_lines)}', recordsParsed '{len(records)}'")
 
         return [
             (payload_mapper or identity)(record)
