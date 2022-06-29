@@ -24,7 +24,7 @@ class KafkaSSH(PyClient, ConnectionBridge):
     kafka_tar_file_path: str = ""
     brokers: str = 'localhost:9092'
     client_tar_url: str = 'https://archive.apache.org/dist/kafka/3.0.0/kafka_2.13-3.0.0.tgz'
-    hide: bool = False
+    hide_stdout: bool = False
     # pass valid fabric connection for remote ssh
     conn: Optional[Connection] = None
 
@@ -193,9 +193,9 @@ class KafkaSSH(PyClient, ConnectionBridge):
         elif config:
             cmd = CMDKafkaTopics(self.brokers, topic, describe=False, alter=True, partitions=parts)
             new_partitions and self.run_basic(cmd.get())
-            self.run_basic(CMDKafkaConfigs(self.brokers, topic=topic, add_config=config_).get(), hide=self.show)
+            self.run_basic(CMDKafkaConfigs(self.brokers, topic=topic, add_config=config_).get(), hide=self.hide_stdout)
 
-        self.run_basic(CMDKafkaTopics(self.brokers, topic, describe=True).get(), hide=self.show)
+        self.run_basic(CMDKafkaTopics(self.brokers, topic, describe=True).get(), hide=self.hide_stdout)
 
     def create_topic(self, topic: str, config: str = ''):
         """
@@ -212,10 +212,11 @@ class KafkaSSH(PyClient, ConnectionBridge):
             logger.info('Topic already exists!')
         else:
             args = {'describe': False, 'create': True, 'partitions': parts, 'replication': replicas}
-            self.run_basic(CMDKafkaTopics(self.brokers, topic, **args).get(), hide=self.show)
-            cfg and self.run_basic(CMDKafkaConfigs(self.brokers, topic=topic, add_config=cfg).get(), hide=self.show)
+            self.run_basic(CMDKafkaTopics(self.brokers, topic, **args).get(), hide=self.hide_stdout)
+            cmg_cmd = CMDKafkaConfigs(self.brokers, topic=topic, add_config=cfg).get()
+            cfg and self.run_basic(cmg_cmd, hide=self.hide_stdout)
 
-        self.run_basic(CMDKafkaTopics(self.brokers, topic, describe=True).get(), hide=self.show)
+        self.run_basic(CMDKafkaTopics(self.brokers, topic, describe=True).get(), hide=self.hide_stdout)
 
     def delete_topic(self, topic: str):
         """Delete topic."""
