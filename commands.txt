@@ -1,0 +1,10 @@
+--- POETRY
+# add API token
+poetry config pypi-token.<reponame> <token>
+
+# list repos
+poetry config repositories
+
+# publish
+poetry build
+poetry publish -r <reponame>

@@ -1,4 +1,5 @@
 import abc
+import pyclients.log_config
 
 
 class PyClient(abc.ABC):

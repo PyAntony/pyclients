@@ -8,7 +8,9 @@ import functools
 import traceback
 import isodate
 from datetime import datetime
-from toolz import excepts, first, identity, apply, last
+from pathlib import PurePosixPath
+from toolz import excepts, first, identity, apply, last, dissoc
+from functools import reduce
 
 from loguru import logger
 from typing import Callable, Any
@@ -37,6 +39,17 @@ def tail(sequence):
     return sequence[1:]
 
 
+def dig_in(keys, coll, default=None, raise_=False) -> Any:
+    dig = lambda obj, k: getattr(obj, k.replace('@', '', 1)) if '@' in str(k) else obj[k]
+
+    try:
+        return reduce(dig, keys, coll)
+    except (KeyError, IndexError, TypeError, AttributeError):
+        if raise_:
+            raise
+        return default
+
+
 def regx_plus(string: str, regx: str, gp: int = 0, converter: Callable = identity) -> Any:
     match = re.search(regx, string)
     return apply(converter, re.search(regx, string).group(gp)) if match else None
@@ -52,11 +65,16 @@ def timestamp13(ts: Number) -> int:
         raise Exception(f"Unable to produce 13 digit number from {ts}")
 
 
+def fmt_timestamp(timestamp: Number, fmt: str = "%m/%d, %H:%M:%S"):
+    dt_object = datetime.fromtimestamp(int(str(timestamp)[:10]))
+    return str(dt_object.strftime(fmt))
+
+
 def fmt_exception(e: Exception):
-    return f"{type(e).__name__}{e.args}"
+    return f"{type(e).__name__}: {str(e)}"
 
 
-def now_with_delta(chars: str, func=operator.sub):
+def now_with_delta(chars: str, func=operator.sub) -> float:
     if not re.match(r'\d+[dhms]', chars, re.I):
         raise Exception(f"Delta expression '{chars}' doesn't match pattern: '\d+[dhms]'")
 
@@ -67,6 +85,10 @@ def now_with_delta(chars: str, func=operator.sub):
     return func(datetime.now(), delta).timestamp()
 
 
+def join_posix(*args):
+    return str(PurePosixPath(*args))
+
+
 def do_when(cond: bool, val: Any, func: Callable) -> Any:
     """Call func on val if condition is true (only the side effects of 'func' are relevant)."""
     cond and func(val)
@@ -75,14 +97,14 @@ def do_when(cond: bool, val: Any, func: Callable) -> Any:
 
 def secure(*exceptions, alt_value=None, silent=False):
     """
-    Decorator returns `return_` value if function raises an exception (in matched `exceptions`),
-    else return computed value. If no exceptions is passed then it catches all exceptions.
+    Decorator returns `alt_value` value if function raises an exception in matched `exceptions`,
+    else return computed value. If no `exceptions` is passed then it catches all exceptions.
     """
 
     def decorator(func):
         def error_handler(e: Exception):
             if not silent:
-                logger.error(f'Thread:{threading.get_ident()} Func:{func.__name__} - {e.__class__}: {str(e)}')
+                logger.error(f'Call({func.__name__})[thread:{threading.get_ident()}] - {fmt_exception(e)}')
             return alt_value
 
         @functools.wraps(func)
@@ -95,7 +117,13 @@ def secure(*exceptions, alt_value=None, silent=False):
     return decorator
 
 
-def inspect_call(arguments=True, return_val=True, self=False):
+def inspect_call(
+        arguments=True,
+        return_val=True,
+        skip_args: tuple = (0,),
+        skip_kwargs: tuple = None,
+        skip_error_on: list[Callable] = None
+):
     """
     Decorator logs exception traceback (if any), arguments, and return value.
     """
@@ -103,17 +131,29 @@ def inspect_call(arguments=True, return_val=True, self=False):
     def decorator(func):
         @functools.wraps(func)
         def inner(*args, **kwargs):
-            args_ = args[1:] if not self else args
-            do_when(arguments, f'Callable({func.__name__}). Args: {args_}. Kwargs: {kwargs}.', logger.debug)
+            args_ = tuple(arg[1] for arg in enumerate(args) if arg[0] not in (skip_args or []))
+            kwargs_ = dissoc(kwargs, *(skip_kwargs or []))
 
             try:
                 return_ = func(*args, **kwargs)
-                do_when(return_val, f'Callable({func.__name__}) returns: {return_}', logger.debug)
+
+                if not arguments and not return_val:
+                    return return_
+
+                msg = f"Inspect({func.__name__})"
+                params = f" - Params: {args_}, {kwargs_}" if arguments else ''
+                ret = f' - Returns: {return_}' if return_val else ''
+                msg_ = msg + params + ret
+                logger.debug(msg_)
 
                 return return_
 
             except Exception as e:
-                logger.warning(traceback.format_exc())
+                log_exception = not any([f(e) for f in (skip_error_on or [])])
+
+                do_when(arguments, f'Inspect({func.__name__}). {args_}, {kwargs_}.', logger.debug)
+                do_when(log_exception, traceback.format_exc(), logger.warning)
+
                 raise e
 
         return inner

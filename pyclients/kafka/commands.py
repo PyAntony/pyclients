@@ -25,7 +25,7 @@ PRODUCER_PROPERTIES = [
 
 BootstrapServerToken = make_flag('BootstrapServerToken', '--bootstrap-server')
 TopicToken = make_flag('TopicToken', '--topic')
-TimeToken = make_flag('TimeToken', '--time', converter=timestamp13)
+TimeToken = make_flag('TimeToken', '--time')
 GroupIdToken = make_flag('GroupIdToken', '--group')
 OffsetToken = make_flag('OffsetToken', '--offset')
 PartitionToken = make_flag('PartitionToken', '--partition')
@@ -33,6 +33,7 @@ TimeOutToken = make_flag('TimeOutToken', '--timeout-ms')
 FromBeginningToken = make_flag('FromBeginningToken', '--from-beginning')
 SkipMessageToken = make_flag('SkipMessageToken', '--skip-message-on-error')
 AckRequiredToken = make_flag('AckRequiredToken', '--request-required-acks')
+MaxMessagesToken = make_flag('MaxMessagesToken', '--max-messages')
 DescribeToken = make_flag('DescribeToken', '--describe')
 ListToken = make_flag('ListToken', '--list')
 HelpToken = make_flag('HelpToken', '--help')
@@ -93,7 +94,8 @@ class CMDKafkaConsumer:
     skipMessage: bool = token(lambda self, b: SkipMessageToken(), boolean_flag=True)
     properties: bool = token(lambda self, b: ConsumerPropertiesToken(), boolean_flag=True)
     from_beginning: bool = token(lambda self, b: FromBeginningToken().when(b), base=True)
+    max_messages: int = token(lambda self, n: MaxMessagesToken(n).when(n > 0), base=-1)
 
 
-def cmd_producer(key_payload: str, cmd: str) -> str:
-    return f"echo '{key_payload}' | {cmd}"
+def cmd_producer(producer_record: str, cmd_: str) -> str:
+    return f"echo '{producer_record}' | {cmd_}"

@@ -3,7 +3,9 @@ from invoke import Result as InvokeResult
 
 Number = Union[int, float]
 MaybeNumber = Optional[Number]
-# TODO: param `Any` should be a parent class for all Records
+Runnable = Callable[[], None]
+Supplier = Callable[[], Any]
+StringPredicate = Callable[[str], bool]
 RecordPredicate = Callable[[Any], bool]
 PayloadMapper = Callable[[Any], Any]
 

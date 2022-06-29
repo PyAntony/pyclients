@@ -3,19 +3,19 @@ import re
 from attrs import define, evolve
 from toolz import excepts, apply, compose, second, drop
 from typing import Union, Optional, Type, Callable
-from functools import partial
 from json import JSONDecodeError
 from loguru import logger
 
+from pyclients.abc.types import MaybeNumber
 from pyclients.kafka.commands import KEY_SEP, HEADERS_SEP
-from pyclients.utils import head_, tail, regx_plus, secure
+from pyclients.utils import head_, tail, regx_plus, secure, last_
 
 
 @define
 class TopicPartitionOffset:
     topic: str
     partition: int
-    offset: int
+    offset: MaybeNumber
 
     @classmethod
     @secure()
@@ -26,7 +26,7 @@ class TopicPartitionOffset:
         return cls(
             head_(triple),
             int(second(triple)),
-            int(head_(drop(2, triple)))
+            None if not last_(triple) else int(head_(drop(2, triple)))
         )
 
     @classmethod
@@ -34,7 +34,7 @@ class TopicPartitionOffset:
         return [
             cls.from_string(token)
             for token in raw.strip().split('\n')
-            if re.match(r'^[\da-z-_]+:\d+:\d+$', token, re.I)
+            if re.match(r'^[\da-z-_]+:\d+:\d*$', token, re.I)
         ]
 
 
@@ -48,7 +48,7 @@ class ConsumerRecord:
     headers: list[tuple[str]]
 
     @classmethod
-    @secure(silent=False)
+    @secure(silent=True)
     def from_string(cls: type, raw: str):
         headers, key, payload = raw.split(KEY_SEP)[-3:]
         fmt_key = lambda s: s if s.lower() not in ['null'] else None
@@ -75,8 +75,8 @@ class ConsumerRecord:
 
 @define
 class ProducerRecord:
-    key: Optional[str]
     payload: Union[dict, str]
+    key: Optional[str] = None
 
     def to_raw(self):
         is_dict = isinstance(self.payload, dict)
