@@ -24,7 +24,7 @@ class KafkaSSH(PyClient, ConnectionBridge):
     kafka_tar_file_path: str = ""
     brokers: str = 'localhost:9092'
     client_tar_url: str = 'https://archive.apache.org/dist/kafka/3.0.0/kafka_2.13-3.0.0.tgz'
-    show: bool = True
+    hide: bool = False
     # pass valid fabric connection for remote ssh
     conn: Optional[Connection] = None
 
@@ -66,7 +66,8 @@ class KafkaSSH(PyClient, ConnectionBridge):
             filter_in: RecordPredicate = None,
             payload_mapper: PayloadMapper = None,
             # for optimization purposes
-            cmd_max_chars: int = 4000,
+            cmd_max_chars: int = 5000,
+            partition_sample: int = -1,
             stop_consumer_on: StringPredicate = None,
             sub_command: str = ''
     ) -> list[Any]:
@@ -82,6 +83,7 @@ class KafkaSSH(PyClient, ConnectionBridge):
         :param filter_in: predicate to filter records.
         :param payload_mapper: converter applied to all records.
         :param cmd_max_chars: (for optimization only) max number of characters allowed per command.
+        :param partition_sample: (for optimization only) max number of topic partitions to search, -1 == all.
         :param stop_consumer_on: (for optimization only). Consumer will be abruptly terminated if
             this predicate returns true for the current monitored stdout. Seen records will be returned.
         :param sub_command: (for optimization only). Additional command to be appended to the main
@@ -120,15 +122,22 @@ class KafkaSSH(PyClient, ConnectionBridge):
         csm_args = {'server': self.brokers, 'topic': topic, 'from_beginning': False, 'timeout_ms': idle_time_ms}
         from_pair = lambda p: {'partition': p[0].partition, 'from_offset': p[0].offset, 'max_messages': p[1]}
         consumer_cmds = [CMDKafkaConsumer(**csm_args, **from_pair(pair)).get() for pair in offsets_info]
+        consumer_cmds_ = consumer_cmds if partition_sample < 0 else consumer_cmds[:partition_sample]
+        logger.debug(f"totalCmds: '{len(consumer_cmds)}', sampled '{len(consumer_cmds_)}'")
 
         runner_args = {'force_termination': stop_consumer_on, 'suffix': sub_command, 'max_chars': cmd_max_chars}
-        stdout_lines = [] if not consumer_cmds else self.run_async2(consumer_cmds, **runner_args)
+        stdout_lines = [] if not consumer_cmds_ else self.run_async2(consumer_cmds_, **runner_args)
+
         records = [ConsumerRecord.from_string(rec) for rec in stdout_lines]
-        logger.debug(f"stdoutLinesLen: '{len(stdout_lines)}', recordsParsed '{len(records)}'")
+        records_ = list(filter(bool, records))
+        logger.debug(
+            "stdoutLinesLen: '{}', recordsParsed: '{}', filtered: '{}', firstRec: '{}'",
+            len(stdout_lines), len(records), len(records_), records[0]
+        )
 
         return [
             (payload_mapper or identity)(record)
-            for record in records
+            for record in records_
             if record and excepts(Exception, lambda rec: filter_in(rec) if filter_in else True)(record)
         ]
 

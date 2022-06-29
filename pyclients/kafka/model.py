@@ -48,7 +48,7 @@ class ConsumerRecord:
     headers: list[tuple[str]]
 
     @classmethod
-    @secure(silent=True)
+    @secure(silent=False)
     def from_string(cls: type, raw: str):
         headers, key, payload = raw.split(KEY_SEP)[-3:]
         fmt_key = lambda s: s if s.lower() not in ['null'] else None

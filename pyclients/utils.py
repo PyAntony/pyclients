@@ -102,15 +102,18 @@ def secure(*exceptions, alt_value=None, silent=False):
     """
 
     def decorator(func):
-        def error_handler(e: Exception):
+        def error_handler(e: Exception, args, kwargs):
             if not silent:
-                logger.error(f'Call({func.__name__})[thread:{threading.get_ident()}] - {fmt_exception(e)}')
+                logger.debug(
+                    'Secure caught call({})[thread:{}] - {}, Params: {}, {}',
+                    func.__name__, threading.get_ident(), fmt_exception(e), args, kwargs
+                )
             return alt_value
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             errors = (Exception,) if not exceptions else exceptions
-            return excepts(errors, lambda: func(*args, **kwargs), error_handler)()
+            return excepts(errors, lambda: func(*args, **kwargs), lambda e: error_handler(e, args, kwargs))()
 
         return wrapper
 
